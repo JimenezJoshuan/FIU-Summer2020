@@ -1,0 +1,508 @@
+Linear:
+
+%matplotlib inline
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.rcParams['figure.figsize'] = (20.0, 10.0)
+
+data = pd.read_csv('headbrain.csv')
+print(data.shape)
+data.head()
+
+X = data['Head Size(cm^3)'].values
+Y = data['Brain Weight(grams)'].values
+
+mean_X = np.mean(X)
+mean_Y = np.mean(Y)
+
+m = len(X)
+
+numer = 0
+denom = 0
+for i in range(m):
+    numer += (X[i] - mean_X) * (Y[i] - mean_Y)
+    denom += (X[i] - mean_X) ** 2
+slope = numer / denom
+c = mean_Y - (slope * mean_X)
+
+print(slope, c)
+
+max_x = np.max(X) + 100
+min_x = np.min(X) - 100
+
+x = np.linspace(min_x, max_x, 1000)
+y = c + slope * x
+
+plt.plot(x, y, color = '#58b970', label = 'Regression Line')
+plt.scatter(X, Y, c = '#ef5423', label = 'Scatter Plot')
+
+plt.legend()
+plt.show()
+
+ss_t = 0
+ss_r = 0
+for i in range(m):
+    y_pred = c + slope * X[i]
+    ss_t += (Y[i] - mean_Y) ** 2
+    ss_r += (Y[i] - y_pred) ** 2
+r2 = 1 - (ss_r/ss_t)
+print(r2)
+
+//
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
+
+X = X.reshape((m,1))
+reg = LinearRegression()
+
+reg = reg.fit(X, Y)
+
+Y_pred = reg.predict(X)
+
+r2_score = reg.score(X, Y)
+
+print(r2_score)
+//
+
+Logistic:
+
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+%matplotlib inline
+import math
+
+data = pd.read_csv("SUV.csv")
+
+data.head(10)
+
+X = data.iloc[:,[2,3]].values
+y = data.iloc[:,4].values
+
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(X,y, test_size=0.25, random_state=0)
+
+from sklearn.preprocessing import StandardScaler
+
+sc = StandardScaler()
+X_train = sc.fit_transform(X_train)
+X_test = sc.transform(X_test)
+
+from sklearn.linear_model import LogisticRegression
+
+classifier = LogisticRegression(random_state = 0)
+classifier.fit(X_train, y_train)
+
+y_pred = classifier.predict(X_test)
+
+from sklearn.metrics import accuracy_score
+accuracy_score(y_test,y_pred)*100
+
+Decision Tree:
+
+def unique_vals(rows, col):
+    return set([row[col] for row in rows])
+
+def class_counts(rows):
+    counts = {}
+    for row in rows:
+        label = row[-1]
+        if label not in counts:
+            counts[label] = 0
+        counts[label] += 1
+    return counts
+
+def is_numeric(value):
+    return isinstance(value, int) or isinstance(value, float)
+
+class Question:
+    
+    def __init__(self, column, value):
+        self.column = column
+        self.value = value
+        
+    def match(self, example):
+        val = example[self.column]
+        if is_numeric(val):
+            return val >= self.value
+        else:
+            return val == self.value
+        
+    def __repr__(self):
+        condition = "=="
+        if is_numeric(self.value):
+            condition = ">="
+        return "Is %s %s %s?" % (header[self.column], condition, str(self.value))
+    
+def partition(rows, question):
+    true_rows, false_rows = [], []
+    for row in rows:
+        if question.match(row):
+            true_rows.append(row)
+        else:
+            false_rows.append(row)
+    return true_rows, false_rows
+
+def gini(rows):
+    counts = class_counts(rows)
+    impurity = 1
+    for lbl in counts:
+        prob_of_lbl = counts[lbl] / float(len(rows))
+        impurity -= prob_of_lbl**2
+    return impurity
+
+def info_gain(left, right, current_uncertainty):
+    p = float(len(left)) / (len(left) + len(right))
+    return current_uncertainty - p * gini(left) - (1 - p) * gini(right)
+
+def find_best_split(rows):
+    best_gain = 0
+    best_question = None
+    current_uncertainty = gini(rows)
+    n_features = len(rows[0]) - 1
+    
+    for col in range(n_features):
+        values = set([row[col] for row in rows])
+        for val in values:
+            question = Question(col, val)
+            true_rows, false_rows = partition(rows, question)
+            if len(true_rows) == 0 or len(false_rows) == 0:
+                continue
+            gain = info_gain(true_rows, false_rows, current_uncertainty)
+            if gain >= best_gain:
+                best_gain, best_question = gain, question
+    return best_gain, best_question
+
+class Leaf:
+    def __init__(self, rows):
+        self.predictions = class_counts(rows)
+        
+class Decision_Node:
+    def __init__(self, question, true_branch, false_branch):
+        self.question = question
+        self.true_branch = true_branch
+        self.false_branch = false_branch
+        
+def build_tree(rows):
+    gain, question = find_best_split(rows)
+    if gain == 0:
+        return Leaf(rows)
+    true_rows, false_rows = partition(rows, question)
+    true_branch = build_tree(true_rows)
+    false_branch = build_tree(false_rows)
+    return Decision_Node(question, true_branch, false_branch)
+
+def print_tree(node, spacing=""):
+    if isinstance(node, Leaf):
+        print(spacing + "Predict", node.predictions)
+        return
+    print(spacing + str(node.question))
+    print(spacing + '-->True:')
+    print_tree(node.true_branch, spacing + " ")
+    print(spacing + '-->False:')
+    print_tree(node.false_branch, spacing + " ")
+
+def classify(row, node):
+    if isinstance(node, Leaf):
+        return node.predictions
+    if node.question.match(row):
+        return classify(row, node.true_branch)
+    else:
+        return classify(row, node.false_branch)
+    
+def print_leaf(counts):
+    total = sum(counts.values()) * 1.0
+    probs = {}
+    for lbl in counts.keys():
+        probs[lbl] = str(int(counts[lbl] / total * 100)) + "%"
+    return probs
+
+data = [
+    ['Green', 3, 'Mango'],
+    ['Yellow', 3, 'Mango'],
+    ['Red', 1, 'Grape'],
+    ['Red', 1, 'Grape'],
+    ['Yellow', 3, 'Lemon'],
+]
+
+header = ["color", "diameter", "label"]
+
+if __name__ == '__main__':
+    my_tree = build_tree(data)
+    print_tree(my_tree)
+    
+    testing_data = [
+        ['Green', 3, 'Mango'],
+        ['Yellow', 4, 'Mango'],
+        ['Red', 2, 'Grape'],
+        ['Red', 1, 'Grape'],
+        ['Yellow', 3, 'Lemon'],
+    ]
+
+    for row in data:
+        print ("Actual: %s. Predicted: %s" % (row[-1], print_leaf(classify(row, my_tree))))
+
+KNN:
+
+%matplotlib inline
+import random
+import math
+import operator
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import csv
+
+def loadDataset(filename, split, trainingSet=[], testSet=[]):
+    with open(filename, 'r') as csvfile:
+        lines = csv.reader(csvfile)
+        dataset = list(lines)
+        length = len(dataset)
+        for x in range(length):
+            for y in range(4):
+                dataset[x][y] = float(dataset[x][y])
+            if random.random() < split:
+                trainingSet.append(dataset[x])
+            else:
+                testSet.append(dataset[x])
+                
+trainingSet = []
+testSet = []
+loadDataset('iris.txt', 0.66, trainingSet, testSet)
+print('Train: ' + repr(len(trainingSet)))
+print('Test: ' + repr(len(testSet)))
+
+def euclidean(ins1, ins2, length):
+    distance = 0
+    for x in range(length):
+        distance += pow((ins1[x] - ins2[x]), 2)
+    return math.sqrt(distance)
+    
+def getNeighbors(trainingSet, testInstance, k):
+    distances = []
+    length = len(testInstance) - 1
+    for x in range(len(trainingSet)):
+        dist = euclidean(testInstance, trainingSet[x], length)
+        distances.append((trainingSet[x], dist))
+    distances.sort(key=operator.itemgetter(1))
+    neighbors = []
+    for x in range(k):
+        neighbors.append(distances[x][0])
+    return neighbors
+    
+trainSet = [[2, 2, 2, 'a'], [4, 4, 4, 'b']]
+testInstance = [5, 5, 5]
+k = 1
+neighbors = getNeighbors(trainSet, testInstance, 1)
+print(neighbors)
+
+def getResponse(neighbors):
+    classVotes = {}
+    for x in range(len(neighbors)):
+        response = neighbors[x][-1]
+        if response in classVotes:
+            classVotes[response] += 1
+        else:
+            classVotes[response] = 1
+    sortedVotes = sorted(classVotes.items(), key=operator.itemgetter(1), reverse=True)
+    return sortedVotes[0][0]
+
+neighbors = [[1,1,1,'a'], [2,2,2,'a'], [3,3,3,'b']]
+response = getResponse(neighbors)
+print(response)
+
+def getAccuracy(testSet, predictions):
+    correct = 0
+    for x in range(len(testSet)):
+        if testSet[x][-1] is predictions[x]:
+            correct += 1
+    return (correct/float(len(testSet))) * 100.0
+    
+testSet = [[1,1,1,'a'], [2,2,2,'a'], [3,3,3,'b']]
+predictions = ['a','a','a']
+accuracy = getAccuracy(testSet, predictions)
+print(accuracy)
+
+def main():
+    trainingSet = []
+    testSet = []
+    split = 0.67
+    loadDataset('iris.txt', split, trainingSet, testSet)
+    print('Train: ' + repr(len(trainingSet)))
+    print('Test: ' + repr(len(testSet)))
+    predictions = []
+    k = 3
+    for x in range(len(testSet)):
+        neighbors = getNeighbors(trainingSet, testSet[x], k)
+        result = getResponse(neighbors)
+        predictions.append(result)
+        print('> predicted = ' + repr(result) + ', actual = ' + repr(testSet[x][-1]))
+    accuracy = getAccuracy(testSet, predictions)
+    print('Accuracy: ' + repr(accuracy) + '%')
+    
+main()
+
+Naive Bayes:
+
+# Naive Bayes On The Iris Dataset
+from csv import reader
+from random import seed
+from random import randrange
+from math import sqrt
+from math import exp
+from math import pi
+
+# Load a CSV file
+def load_csv(filename):
+    dataset = list()
+    with open(filename, 'r') as file:
+        csv_reader = reader(file)
+        for row in csv_reader:
+            if not row:
+                continue
+            dataset.append(row)
+    return dataset
+
+# Convert string column to float
+def str_column_to_float(dataset, column):
+    for row in dataset:
+        row[column] = float(row[column].strip())
+        
+# Convert string column to integer
+def str_column_to_int(dataset, column):
+    class_values = [row[column] for row in dataset]
+    unique = set(class_values)
+    lookup = dict()
+    for i, value in enumerate(unique):
+        lookup[value] = i
+    for row in dataset:
+        row[column] = lookup[row[column]]
+    return lookup
+
+# Split a dataset into k folds
+def cross_validation_split(dataset, n_folds):
+    dataset_split = list()
+    dataset_copy = list(dataset)
+    fold_size = int(len(dataset) / n_folds)
+    for _ in range(n_folds):
+        fold = list()
+        while len(fold) < fold_size:
+            index = randrange(len(dataset_copy))
+            fold.append(dataset_copy.pop(index))
+            dataset_split.append(fold)
+    return dataset_split
+
+# Calculate accuracy percentage
+def accuracy_metric(actual, predicted):
+    correct = 0
+    for i in range(len(actual)):
+        if actual[i] == predicted[i]:
+            correct += 1
+    return correct / float(len(actual)) * 100.0
+
+# Evaluate an algorithm using a cross validation split
+def evaluate_algorithm(dataset, algorithm, n_folds, *args):
+    folds = cross_validation_split(dataset, n_folds)
+    scores = list()
+    for fold in folds:
+        train_set = list(folds)
+        train_set.remove(fold)
+        train_set = sum(train_set, [])
+        test_set = list()
+        for row in fold:
+            row_copy = list(row)
+            test_set.append(row_copy)
+            row_copy[-1] = None
+            predicted = algorithm(train_set, test_set, *args)
+            actual = [row[-1] for row in fold]
+            accuracy = accuracy_metric(actual, predicted)
+            scores.append(accuracy)
+    return scores
+
+# Split the dataset by class values, returns a dictionary
+def separate_by_class(dataset):
+    separated = dict()
+    for i in range(len(dataset)):
+        vector = dataset[i]
+        class_value = vector[-1]
+        if (class_value not in separated):
+            separated[class_value] = list()
+            separated[class_value].append(vector)
+    return separated
+
+# Calculate the mean of a list of numbers
+def mean(numbers):
+    return sum(numbers)/float(len(numbers))
+
+# Calculate the standard deviation of a list of numbers
+def stdev(numbers):
+    avg = mean(numbers)
+    variance = sum([(x-avg)**2 for x in numbers]) / float(len(numbers)-1)
+    return sqrt(variance)
+
+# Calculate the mean, stdev and count for each column in a dataset
+def summarize_dataset(dataset):
+    summaries = [(mean(column), stdev(column), len(column)) for column in zip(*dataset)]
+    del(summaries[-1])
+    return summaries
+
+# Split dataset by class then calculate statistics for each row
+def summarize_by_class(dataset):
+    separated = separate_by_class(dataset)
+    summaries = dict()
+    for class_value, rows in separated.items():
+        summaries[class_value] = summarize_dataset(rows)
+    return summaries
+
+# Calculate the Gaussian probability distribution function for x
+def calculate_probability(x, mean, stdev):
+    exponent = exp(-((x-mean)**2 / (2 * stdev**2 )))
+    return (1 / (sqrt(2 * pi) * stdev)) * exponent
+
+# Calculate the probabilities of predicting each class for a given row
+def calculate_class_probabilities(summaries, row):
+    total_rows = sum([summaries[label][0][2] for label in summaries])
+    probabilities = dict()
+    for class_value, class_summaries in summaries.items():
+        probabilities[class_value] = summaries[class_value][0][2]/float(total_rows)
+    for i in range(len(class_summaries)):
+        mean, stdev, _ = class_summaries[i]
+        probabilities[class_value] *= calculate_probability(row[i], mean, stdev)
+    return probabilities
+
+# Predict the class for a given row
+def predict(summaries, row):
+    probabilities = calculate_class_probabilities(summaries, row)
+    best_label, best_prob = None, -1
+    for class_value, probability in probabilities.items():
+        if best_label is None or probability > best_prob:
+            best_prob = probability
+            best_label = class_value
+    return best_label
+
+# Naive Bayes Algorithm
+def naive_bayes(train, test):
+    summarize = summarize_by_class(train)
+    predictions = list()
+    for row in test:
+        output = predict(summarize, row)
+        predictions.append(output)
+    return(predictions)
+
+# Test Naive Bayes on Iris Dataset
+seed(1)
+filename = 'iris.csv'
+dataset = load_csv(filename)
+for i in range(len(dataset[0])-1):
+    str_column_to_float(dataset, i)
+    
+# convert class column to integers
+str_column_to_int(dataset, len(dataset[0])-1)
+# evaluate algorithm
+n_folds = 5
+scores = evaluate_algorithm(dataset, naive_bayes, n_folds)
+print('Scores: %s' % scores)
+print('Mean Accuracy: %.3f%%' % (sum(scores)/float(len(scores))))
